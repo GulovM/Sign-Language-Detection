@@ -1,7 +1,6 @@
 import cv2
 import numpy as np 
 import mediapipe as mp
-import streamlit as st
 from tensorflow.keras.models import load_model
 
 # Путь к файлу модели H5
@@ -98,35 +97,53 @@ def prob_viz(res, actions, input_frame, colors):
 
 # Создаем массив строк с различными действиями, которые будут распознаваться моделью.
 actions = np.array(['hello', 'thanks', 'iloveyou'])
-sequence = []
-sentence = []
-predictions = []
-threshold = 0.5
 
-
+res = [.7, 0.2, 0.1]
 # Создаем контекстный менеджер для видеопотока
 cap = cv2.VideoCapture(0)
+# Создаем пустой список sequence для хранения последовательности ключевых точек.
+sequence = []
+# Создаем пустой список sentence для хранения предложения.
+sentence = []
+# Создаем пустой список predictions для хранения предсказаний модели.
+predictions = []
+# Задаем пороговое значение для принятия решений о классификации жеста.
+threshold = 0.7
 
-# Блок Streamlit
-st.title('Hand Gesture Recognition')
-st.markdown('Use your hand gestures to form sentences!')
+# Захватываем видеопоток с веб-камеры.
+cap = cv2.VideoCapture(0)
 
+# Используем контекстный менеджер для работы с Mediapipe Hands моделью.
 with mp_hands.Hands(max_num_hands=2) as holistic:
-    # Начинаем бесконечный цикл обработки кадров
+    # Начинаем бесконечный цикл обработки кадров.
     while cap.isOpened():
+        # Считываем кадр из видеопотока.
         ret, frame = cap.read()
+
+        # Проверка наличия кадра
+        if not ret:
+            break
         
-        # Обнаруживаем ключевые точки на кадре
+        # Обнаруживаем ключевые точки на кадре с помощью функции mediapipe_detection.
         image, results = mediapipe_detection(frame, holistic)
+        
+        # Рисуем обнаруженные ключевые точки на кадре.
         draw_landmarks(image, results)
+        
+        # Извлекаем ключевые точки из результатов обнаружения.
         keypoints = extract_keypoints(results)
+        
+        # Добавляем ключевые точки в список sequence и ограничиваем его размер 30 кадрами.
         sequence.append(keypoints)
         sequence = sequence[-30:]
         
+        # Если в списке sequence накопилось 30 кадров, делаем предсказание модели.
         if len(sequence) == 30:
             res = model.predict(np.expand_dims(sequence, axis=0))[0]
+            print(actions[np.argmax(res)])
             predictions.append(np.argmax(res))
-            
+        
+        # Если предсказание входит в последние 10 предсказаний и превышает пороговое значение, добавляем его в предложение.
         if np.argmax(res) in np.unique(predictions[-10:]):
             if res[np.argmax(res)] > threshold:
                 if len(sentence) > 0:
@@ -135,20 +152,26 @@ with mp_hands.Hands(max_num_hands=2) as holistic:
                 else:
                     sentence.append(actions[np.argmax(res)])
                     
+        # Ограничиваем длину предложения пятью последними словами.
         if len(sentence) > 5:
             sentence = sentence[-5:]
         
+        # Визуализируем вероятности действий на кадре.
         image = prob_viz(res, actions, image, colors)
+        
+        # Добавляем фон для вывода текущего предложения.
         cv2.rectangle(image, (0,0), (640, 40), (245, 117, 16), -1)
+        # Добавляем текущее предложение на кадр.
         cv2.putText(image, ' '.join(sentence), (3, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
         
-        # Отображаем кадр с помощью Streamlit
-        st.image(image, channels="RGB", use_column_width=True)
+        # Отображаем кадр.
+        cv2.imshow('OpenCV Test', image)
         
-        # Выход из цикла при нажатии клавиши ESC
+        # Если нажата клавиша ESC, выходим из цикла.
         if cv2.waitKey(10) & 0xFF==27:
             break
-
-cap.release()
-cv2.destroyAllWindows()
+            
+    # Освобождаем ресурсы камеры и закрываем все открытые окна OpenCV.
+    cap.release()
+    cv2.destroyAllWindows()
